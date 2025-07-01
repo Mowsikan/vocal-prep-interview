@@ -3,24 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Star, Zap, Mic, FileText, CheckCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface PremiumUpgradeProps {
   onUpgrade: () => void;
 }
 
 const PremiumUpgrade = ({ onUpgrade }: PremiumUpgradeProps) => {
-  const { toast } = useToast();
-
   const handleUpgrade = () => {
-    // Simulate payment process
-    toast({
-      title: "Payment Successful!",
-      description: "Welcome to Premium! All features are now unlocked.",
-    });
-    
-    // Simulate successful payment and localStorage update
-    localStorage.setItem('isPremium', 'true');
+    // Call the parent's upgrade function which now handles database updates
     onUpgrade();
   };
 

@@ -3,15 +3,19 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Mic, FileText, Star, Zap, CheckCircle } from "lucide-react";
+import { Upload, Mic, FileText, Star, Zap, CheckCircle, LogOut, User } from "lucide-react";
 import ResumeUpload from "@/components/ResumeUpload";
 import InterviewSession from "@/components/InterviewSession";
 import PremiumUpgrade from "@/components/PremiumUpgrade";
+import { useAuth } from "@/contexts/AuthContext";
+import { useProfile } from "@/hooks/useProfile";
+import { Link } from "react-router-dom";
 
 const Index = () => {
+  const { user, signOut } = useAuth();
+  const { profile, isPremium, upgradeToPremium } = useProfile();
   const [currentStep, setCurrentStep] = useState<'upload' | 'questions' | 'interview' | 'feedback'>('upload');
   const [questions, setQuestions] = useState<string[]>([]);
-  const [userType, setUserType] = useState<'free' | 'premium'>('free');
   const [resumeData, setResumeData] = useState<string | null>(null);
 
   const handleResumeProcessed = (extractedText: string, generatedQuestions: string[]) => {
@@ -21,14 +25,60 @@ const Index = () => {
   };
 
   const handleStartInterview = () => {
-    if (userType === 'premium') {
+    if (isPremium) {
       setCurrentStep('interview');
     }
   };
 
   const handleUpgradeToPremium = () => {
-    setUserType('premium');
+    upgradeToPremium();
   };
+
+  // Show login prompt if not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+        {/* Header */}
+        <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                  <Mic className="w-5 h-5 text-white" />
+                </div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  AI Interviewer
+                </h1>
+              </div>
+              <Link to="/auth">
+                <Button variant="outline">
+                  <User className="w-4 h-4 mr-2" />
+                  Sign In
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="container mx-auto px-4 py-16">
+          <div className="text-center max-w-3xl mx-auto">
+            <h2 className="text-5xl font-bold text-gray-900 mb-6">
+              Master Your Next Interview
+            </h2>
+            <p className="text-xl text-gray-600 mb-8">
+              Get personalized AI-generated questions based on your resume. Practice with voice interactions and receive detailed feedback.
+            </p>
+            <Link to="/auth">
+              <Button size="lg" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                Get Started - Sign Up Free
+              </Button>
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -45,13 +95,20 @@ const Index = () => {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <Badge variant={userType === 'premium' ? 'default' : 'secondary'} className="px-3 py-1">
-                {userType === 'premium' ? (
+              <Badge variant={isPremium ? 'default' : 'secondary'} className="px-3 py-1">
+                {isPremium ? (
                   <><Star className="w-3 h-3 mr-1" />Premium</>
                 ) : (
                   'Free User'
                 )}
               </Badge>
+              <span className="text-sm text-gray-600">
+                Welcome, {profile?.full_name || user.email}
+              </span>
+              <Button variant="outline" size="sm" onClick={signOut}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
@@ -176,7 +233,7 @@ const Index = () => {
                   ))}
                 </div>
 
-                {userType === 'free' ? (
+                {!isPremium ? (
                   <div className="text-center py-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">
                       Ready to Practice?
@@ -203,14 +260,14 @@ const Index = () => {
           </div>
         )}
 
-        {currentStep === 'interview' && userType === 'premium' && (
+        {currentStep === 'interview' && isPremium && (
           <InterviewSession 
             questions={questions}
             onComplete={() => setCurrentStep('feedback')}
           />
         )}
 
-        {currentStep === 'feedback' && userType === 'premium' && (
+        {currentStep === 'feedback' && isPremium && (
           <div className="max-w-4xl mx-auto text-center">
             <Card>
               <CardContent className="py-12">

@@ -9,7 +9,118 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      interview_sessions: {
+        Row: {
+          answers: Json | null
+          completed_at: string | null
+          created_at: string | null
+          feedback: string | null
+          id: string
+          pdf_report_url: string | null
+          questions: Json
+          resume_text: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          answers?: Json | null
+          completed_at?: string | null
+          created_at?: string | null
+          feedback?: string | null
+          id?: string
+          pdf_report_url?: string | null
+          questions: Json
+          resume_text?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          answers?: Json | null
+          completed_at?: string | null
+          created_at?: string | null
+          feedback?: string | null
+          id?: string
+          pdf_report_url?: string | null
+          questions?: Json
+          resume_text?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+          premium_purchased_at: string | null
+          premium_status: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id: string
+          premium_purchased_at?: string | null
+          premium_status?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          premium_purchased_at?: string | null
+          premium_status?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      resume_uploads: {
+        Row: {
+          extracted_text: string | null
+          file_path: string | null
+          filename: string
+          id: string
+          upload_date: string | null
+          user_id: string
+        }
+        Insert: {
+          extracted_text?: string | null
+          file_path?: string | null
+          filename: string
+          id?: string
+          upload_date?: string | null
+          user_id: string
+        }
+        Update: {
+          extracted_text?: string | null
+          file_path?: string | null
+          filename?: string
+          id?: string
+          upload_date?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resume_uploads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
