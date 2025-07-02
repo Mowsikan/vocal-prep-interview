@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { Database } from '@/integrations/supabase/types';
+
+type DatabaseSession = Database['public']['Tables']['interview_sessions']['Row'];
 
 interface InterviewSession {
   id: string;
@@ -15,6 +18,15 @@ interface InterviewSession {
   created_at: string;
   completed_at: string | null;
 }
+
+const transformDatabaseSession = (dbSession: DatabaseSession): InterviewSession => {
+  return {
+    ...dbSession,
+    questions: Array.isArray(dbSession.questions) ? dbSession.questions as string[] : [],
+    answers: Array.isArray(dbSession.answers) ? dbSession.answers as string[] : null,
+    status: (dbSession.status as 'in_progress' | 'completed' | 'abandoned') || 'in_progress'
+  };
+};
 
 export const useInterviewSessions = () => {
   const { user } = useAuth();
@@ -47,7 +59,7 @@ export const useInterviewSessions = () => {
         return;
       }
 
-      setSessions(data || []);
+      setSessions((data || []).map(transformDatabaseSession));
     } catch (error) {
       console.error('Error fetching sessions:', error);
     } finally {
@@ -79,7 +91,7 @@ export const useInterviewSessions = () => {
         return null;
       }
 
-      setCurrentSession(data);
+      setCurrentSession(transformDatabaseSession(data));
       await fetchSessions();
       return data;
     } catch (error) {

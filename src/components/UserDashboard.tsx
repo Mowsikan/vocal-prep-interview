@@ -19,13 +19,13 @@ const UserDashboard = () => {
   const inProgressSessions = sessions.filter(s => s.status === 'in_progress');
 
   const getStatusBadge = (status: string) => {
-    const variants = {
+    const variants: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
       'completed': 'default',
       'in_progress': 'secondary',
       'abandoned': 'destructive'
     };
     return (
-      <Badge variant={variants[status as keyof typeof variants] || 'secondary'}>
+      <Badge variant={variants[status] || 'secondary'}>
         {status.replace('_', ' ').toUpperCase()}
       </Badge>
     );

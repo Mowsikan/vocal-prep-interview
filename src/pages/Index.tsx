@@ -28,7 +28,7 @@ const Index = () => {
     if (user) {
       const session = await createSession(generatedQuestions, extractedText);
       if (session) {
-        setCurrentSession(session);
+        // Session is already transformed in the hook
       }
     }
     
