@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface InterviewSessionProps {
   questions: string[];
-  onComplete: () => void;
+  onComplete: (answers: string[]) => void;
 }
 
 const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
@@ -103,12 +103,8 @@ const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
       } else {
-        // Interview complete
-        toast({
-          title: "Interview completed!",
-          description: "Generating your feedback report...",
-        });
-        onComplete();
+        // Interview complete - pass answers to parent
+        onComplete(newAnswers);
       }
     } else {
       toast({
@@ -127,7 +123,7 @@ const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
-      onComplete();
+      onComplete(newAnswers);
     }
   };
 

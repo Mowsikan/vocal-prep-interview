@@ -3,24 +3,35 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Mic, FileText, Star, Zap, CheckCircle, LogOut, User } from "lucide-react";
+import { Upload, Mic, FileText, Star, Zap, CheckCircle, LogOut, User, BarChart3 } from "lucide-react";
 import ResumeUpload from "@/components/ResumeUpload";
 import InterviewSession from "@/components/InterviewSession";
 import PremiumUpgrade from "@/components/PremiumUpgrade";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
+import { useInterviewSessions } from "@/hooks/useInterviewSessions";
 import { Link } from "react-router-dom";
 
 const Index = () => {
   const { user, signOut } = useAuth();
   const { profile, isPremium, upgradeToPremium } = useProfile();
+  const { createSession, currentSession, setCurrentSession, completeSession } = useInterviewSessions();
   const [currentStep, setCurrentStep] = useState<'upload' | 'questions' | 'interview' | 'feedback'>('upload');
   const [questions, setQuestions] = useState<string[]>([]);
   const [resumeData, setResumeData] = useState<string | null>(null);
 
-  const handleResumeProcessed = (extractedText: string, generatedQuestions: string[]) => {
+  const handleResumeProcessed = async (extractedText: string, generatedQuestions: string[]) => {
     setResumeData(extractedText);
     setQuestions(generatedQuestions);
+    
+    // Create interview session in database
+    if (user) {
+      const session = await createSession(generatedQuestions, extractedText);
+      if (session) {
+        setCurrentSession(session);
+      }
+    }
+    
     setCurrentStep('questions');
   };
 
@@ -32,6 +43,13 @@ const Index = () => {
 
   const handleUpgradeToPremium = () => {
     upgradeToPremium();
+  };
+
+  const handleInterviewComplete = async (answers: string[]) => {
+    if (currentSession) {
+      await completeSession(currentSession.id, answers, "Interview completed successfully");
+    }
+    setCurrentStep('feedback');
   };
 
   // Show login prompt if not authenticated
@@ -95,6 +113,12 @@ const Index = () => {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
+              <Link to="/dashboard">
+                <Button variant="outline" size="sm">
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  Dashboard
+                </Button>
+              </Link>
               <Badge variant={isPremium ? 'default' : 'secondary'} className="px-3 py-1">
                 {isPremium ? (
                   <><Star className="w-3 h-3 mr-1" />Premium</>
@@ -263,7 +287,7 @@ const Index = () => {
         {currentStep === 'interview' && isPremium && (
           <InterviewSession 
             questions={questions}
-            onComplete={() => setCurrentStep('feedback')}
+            onComplete={handleInterviewComplete}
           />
         )}
 
@@ -276,12 +300,19 @@ const Index = () => {
                   Interview Complete!
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Your feedback report is being generated. You'll receive a detailed PDF with personalized insights.
+                  Your feedback report is being generated. You can view all your interview history in your dashboard.
                 </p>
-                <Button size="lg" variant="outline">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Download Report
-                </Button>
+                <div className="flex justify-center space-x-4">
+                  <Link to="/dashboard">
+                    <Button size="lg" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      View Dashboard
+                    </Button>
+                  </Link>
+                  <Button size="lg" variant="outline" onClick={() => setCurrentStep('upload')}>
+                    Start New Interview
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
