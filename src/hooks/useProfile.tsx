@@ -52,46 +52,53 @@ export const useProfile = () => {
     }
   };
 
-  const upgradeToPremium = async () => {
+  const initializePayment = async () => {
     if (!user || !profile) return;
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          premium_status: true,
-          premium_purchased_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
-
-      if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to upgrade to premium. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Update local state
-      setProfile(prev => prev ? {
-        ...prev,
-        premium_status: true,
-        premium_purchased_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      } : null);
-
       toast({
-        title: "Premium Upgrade Successful!",
-        description: "Welcome to Premium! All features are now unlocked.",
+        title: "Initializing Payment",
+        description: "Please wait while we set up your payment...",
       });
 
+      // Create payment order
+      const { data, error } = await supabase.functions.invoke('create-payment-order', {
+        headers: {
+          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+      });
+
+      if (error || !data) {
+        throw new Error(error?.message || 'Failed to create payment order');
+      }
+
+      return data;
     } catch (error) {
-      console.error('Error upgrading to premium:', error);
+      console.error('Error initializing payment:', error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        description: "Failed to initialize payment. Please try again.",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
+  const verifyPayment = async (paymentData: any) => {
+    try {
+      // Payment verification is handled by webhook
+      // Just refresh the profile to get updated status
+      await fetchProfile();
+      
+      toast({
+        title: "Payment Successful!",
+        description: "Welcome to Premium! All features are now unlocked.",
+      });
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      toast({
+        title: "Payment Verification Failed",
+        description: "Please contact support if the issue persists.",
         variant: "destructive",
       });
     }
@@ -101,7 +108,8 @@ export const useProfile = () => {
     profile,
     loading,
     isPremium: profile?.premium_status || false,
-    upgradeToPremium,
+    initializePayment,
+    verifyPayment,
     refetch: fetchProfile
   };
 };

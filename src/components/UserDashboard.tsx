@@ -12,7 +12,7 @@ import { format } from "date-fns";
 
 const UserDashboard = () => {
   const { user } = useAuth();
-  const { profile, isPremium, upgradeToPremium } = useProfile();
+  const { profile, isPremium, initializePayment } = useProfile();
   const { sessions, loading } = useInterviewSessions();
 
   const completedSessions = sessions.filter(s => s.status === 'completed');
@@ -277,10 +277,10 @@ const UserDashboard = () => {
                 <p className="text-gray-600 mb-2">
                   Unlock voice interviews, AI feedback, and detailed reports
                 </p>
-                <p className="text-2xl font-bold text-blue-600">₹199 one-time</p>
+                <p className="text-2xl font-bold text-blue-600">₹1 one-time</p>
               </div>
               <Button 
-                onClick={upgradeToPremium}
+                onClick={initializePayment}
                 className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
               >
                 <Star className="w-4 h-4 mr-2" />

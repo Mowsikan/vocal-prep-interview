@@ -14,7 +14,7 @@ import { Link } from "react-router-dom";
 
 const Index = () => {
   const { user, signOut } = useAuth();
-  const { profile, isPremium, upgradeToPremium } = useProfile();
+  const { profile, isPremium, initializePayment, verifyPayment } = useProfile();
   const { createSession, currentSession, setCurrentSession, completeSession } = useInterviewSessions();
   const [currentStep, setCurrentStep] = useState<'upload' | 'questions' | 'interview' | 'feedback'>('upload');
   const [questions, setQuestions] = useState<string[]>([]);
@@ -41,8 +41,8 @@ const Index = () => {
     }
   };
 
-  const handleUpgradeToPremium = () => {
-    upgradeToPremium();
+  const handleUpgradeToPremium = async () => {
+    return await initializePayment();
   };
 
   const handleInterviewComplete = async (answers: string[]) => {
@@ -205,7 +205,7 @@ const Index = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     Premium Experience
-                    <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600">₹199</Badge>
+                    <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600">₹1</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
