@@ -1,4 +1,5 @@
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,14 +10,33 @@ import { useProfile } from "@/hooks/useProfile";
 import { useInterviewSessions } from "@/hooks/useInterviewSessions";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
+import SessionDetailsModal from "./SessionDetailsModal";
+import { useNavigate } from "react-router-dom";
 
 const UserDashboard = () => {
   const { user } = useAuth();
   const { profile, isPremium, initializePayment } = useProfile();
   const { sessions, loading } = useInterviewSessions();
+  const navigate = useNavigate();
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const completedSessions = sessions.filter(s => s.status === 'completed');
   const inProgressSessions = sessions.filter(s => s.status === 'in_progress');
+
+  const handleViewSession = (session: any) => {
+    setSelectedSession(session);
+    setIsModalOpen(true);
+  };
+
+  const handleContinueSession = (session: any) => {
+    // Navigate back to interview with this session
+    navigate('/', { state: { continueSession: session } });
+  };
+
+  const handleDownloadReport = (reportUrl: string) => {
+    window.open(reportUrl, '_blank');
+  };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
@@ -165,12 +185,20 @@ const UserDashboard = () => {
                         <TableCell>{session.questions.length} questions</TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
-                            <Button variant="outline" size="sm">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleViewSession(session)}
+                            >
                               <Eye className="w-3 h-3 mr-1" />
                               View
                             </Button>
                             {session.pdf_report_url && (
-                              <Button variant="outline" size="sm">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleDownloadReport(session.pdf_report_url)}
+                              >
                                 <Download className="w-3 h-3 mr-1" />
                                 Report
                               </Button>
@@ -210,12 +238,20 @@ const UserDashboard = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleViewSession(session)}
+                          >
                             <Eye className="w-3 h-3 mr-1" />
                             View
                           </Button>
                           {session.pdf_report_url && (
-                            <Button variant="outline" size="sm">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleDownloadReport(session.pdf_report_url)}
+                            >
                               <Download className="w-3 h-3 mr-1" />
                               Report
                             </Button>
@@ -249,7 +285,11 @@ const UserDashboard = () => {
                         <Badge variant="secondary">In Progress</Badge>
                       </TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleContinueSession(session)}
+                        >
                           Continue
                         </Button>
                       </TableCell>
@@ -290,6 +330,13 @@ const UserDashboard = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Session Details Modal */}
+      <SessionDetailsModal 
+        session={selectedSession}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   );
 };
