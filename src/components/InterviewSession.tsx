@@ -1,9 +1,8 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Mic, MicOff, Volume2, SkipForward, CheckCircle } from "lucide-react";
+import { Mic, MicOff, Volume2, SkipForward, CheckCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface InterviewSessionProps {
@@ -15,6 +14,7 @@ const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [userAnswers, setUserAnswers] = useState<string[]>([]);
   const [currentAnswer, setCurrentAnswer] = useState("");
   const { toast } = useToast();
@@ -22,8 +22,8 @@ const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
   const currentQuestion = questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
+  // Auto-speak the question when it changes
   useEffect(() => {
-    // Auto-speak the question when it changes
     speakQuestion();
   }, [currentQuestionIndex]);
 
@@ -94,6 +94,32 @@ const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
     setIsListening(false);
   };
 
+  const handleCompleteInterview = async () => {
+    setIsCompleting(true);
+    
+    try {
+      // Generate AI feedback and PDF report
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      // First, complete the interview with answers
+      onComplete(userAnswers);
+      
+      toast({
+        title: "Interview completed!",
+        description: "Generating your feedback report...",
+      });
+    } catch (error) {
+      console.error('Error completing interview:', error);
+      toast({
+        title: "Error",
+        description: "Failed to complete interview. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
   const handleNextQuestion = () => {
     if (currentAnswer.trim()) {
       const newAnswers = [...userAnswers, currentAnswer];
@@ -104,7 +130,7 @@ const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
       } else {
         // Interview complete - pass answers to parent
-        onComplete(newAnswers);
+        handleCompleteInterview();
       }
     } else {
       toast({
@@ -123,9 +149,27 @@ const InterviewSession = ({ questions, onComplete }: InterviewSessionProps) => {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
-      onComplete(newAnswers);
+      handleCompleteInterview();
     }
   };
+
+  if (isCompleting) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="w-16 h-16 text-blue-600 mx-auto animate-spin mb-4" />
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">
+              Processing Your Interview
+            </h3>
+            <p className="text-gray-600">
+              Generating AI feedback and creating your detailed report...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

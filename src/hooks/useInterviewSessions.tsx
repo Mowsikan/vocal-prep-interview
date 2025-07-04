@@ -133,11 +133,56 @@ export const useInterviewSessions = () => {
   };
 
   const completeSession = async (sessionId: string, answers: string[], feedback?: string) => {
-    await updateSession(sessionId, {
-      answers,
-      feedback,
-      status: 'completed'
-    });
+    try {
+      // First update the session with answers
+      const { error: updateError } = await supabase
+        .from('interview_sessions')
+        .update({
+          answers,
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', sessionId);
+
+      if (updateError) throw updateError;
+
+      // Get the session data for AI processing
+      const { data: session } = await supabase
+        .from('interview_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (session && session.questions) {
+        // Generate AI feedback
+        try {
+          await supabase.functions.invoke('generate-feedback', {
+            body: { 
+              questions: session.questions,
+              answers: answers,
+              sessionId: sessionId
+            }
+          });
+        } catch (feedbackError) {
+          console.warn('Failed to generate AI feedback:', feedbackError);
+        }
+
+        // Generate PDF report
+        try {
+          await supabase.functions.invoke('generate-pdf-report', {
+            body: { sessionId: sessionId }
+          });
+        } catch (pdfError) {
+          console.warn('Failed to generate PDF report:', pdfError);
+        }
+      }
+
+      // Refresh sessions after completion
+      await fetchSessions();
+    } catch (error) {
+      console.error('Error completing session:', error);
+      throw error;
+    }
   };
 
   return {
