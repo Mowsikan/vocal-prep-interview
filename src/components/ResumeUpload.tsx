@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, FileText, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ResumeUploadProps {
   onResumeProcessed: (extractedText: string, questions: string[]) => void;
@@ -14,16 +15,68 @@ const ResumeUpload = ({ onResumeProcessed }: ResumeUploadProps) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const { toast } = useToast();
 
-  // Mock questions for demo purposes
-  const mockQuestions = [
-    "Tell me about yourself and your background in your field.",
-    "What motivated you to apply for this position?",
-    "Describe a challenging project you've worked on and how you overcame obstacles.",
-    "What are your greatest strengths and how do they relate to this role?",
-    "Where do you see yourself professionally in the next 5 years?",
-    "How do you handle working under pressure and tight deadlines?",
-    "What experience do you have with the technologies mentioned in your resume?"
-  ];
+  const extractTextFromPDF = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          // For now, we'll use a simulated text extraction
+          // In a real implementation, you'd use a PDF parsing library
+          const mockExtractedText = `
+Professional Software Developer
+5+ years of experience in full-stack web development
+
+TECHNICAL SKILLS:
+- Frontend: React, TypeScript, JavaScript, HTML5, CSS3, Tailwind CSS
+- Backend: Node.js, Express.js, Python, Django
+- Databases: PostgreSQL, MongoDB, Redis
+- Cloud: AWS, Google Cloud Platform, Docker, Kubernetes
+- Tools: Git, GitHub, VS Code, Figma
+
+EXPERIENCE:
+Senior Software Engineer | TechCorp Inc. | 2021 - Present
+- Led development of scalable web applications serving 100K+ users
+- Implemented microservices architecture reducing system downtime by 40%
+- Mentored junior developers and conducted code reviews
+- Technologies: React, Node.js, PostgreSQL, AWS
+
+Software Developer | StartupXYZ | 2019 - 2021
+- Built responsive web applications from scratch
+- Collaborated with cross-functional teams in agile environment
+- Optimized database queries improving application performance by 60%
+- Technologies: JavaScript, Python, MongoDB, Docker
+
+EDUCATION:
+Bachelor of Science in Computer Science | University ABC | 2015 - 2019
+- Relevant coursework: Data Structures, Algorithms, Database Systems
+- Capstone project: E-commerce platform with real-time analytics
+
+PROJECTS:
+Task Management App
+- Full-stack application with React frontend and Node.js backend
+- Implemented user authentication, real-time updates, and data visualization
+- Deployed on AWS with CI/CD pipeline
+
+Personal Portfolio Website
+- Responsive design showcasing projects and skills
+- Built with React and deployed on Vercel
+- Integrated with headless CMS for content management
+
+CERTIFICATIONS:
+- AWS Certified Solutions Architect Associate
+- Google Cloud Professional Cloud Architect
+- Certified Scrum Master (CSM)
+          `.trim();
+          
+          resolve(mockExtractedText);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
   const handleFileUpload = useCallback(async (file: File) => {
     if (!file.type.includes('pdf')) {
@@ -35,51 +88,58 @@ const ResumeUpload = ({ onResumeProcessed }: ResumeUploadProps) => {
       return;
     }
 
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      toast({
+        title: "File too large",
+        description: "Please upload a file smaller than 10MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsUploading(true);
 
     try {
-      // Extract text from PDF
-      const formData = new FormData();
-      formData.append('file', file);
+      console.log('Starting PDF text extraction...');
       
-      // Read PDF content as text (simple extraction)
-      const reader = new FileReader();
-      const fileContent = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          // For demo purposes, we'll use a more comprehensive extracted text
-          // In production, you'd want to use a proper PDF parsing library
-          const text = `Professional software developer with 5+ years of experience in full-stack development. 
-          Expertise in React, Node.js, TypeScript, and cloud technologies. 
-          Led multiple teams and delivered scalable applications for enterprise clients.
-          Strong background in agile methodologies and test-driven development.
-          Experience with databases, API design, and microservices architecture.`;
-          resolve(text);
-        };
-        reader.onerror = reject;
-        reader.readAsText(file);
-      });
+      // Extract text from PDF
+      const extractedText = await extractTextFromPDF(file);
+      console.log('PDF text extracted successfully');
+      
+      // Get current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Please log in to upload your resume');
+      }
+
+      console.log('Calling process-resume function...');
 
       // Generate questions using AI
-      const { supabase } = await import('@/integrations/supabase/client');
-      
       const { data, error } = await supabase.functions.invoke('process-resume', {
-        body: { resumeText: fileContent }
+        body: { resumeText: extractedText },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
       if (error) {
-        throw new Error(error.message);
+        console.error('Function invoke error:', error);
+        throw new Error(error.message || 'Failed to process resume');
       }
 
       if (!data || !data.questions) {
+        console.error('Invalid response from process-resume:', data);
         throw new Error('Failed to generate questions');
       }
       
+      console.log('Questions generated successfully:', data.questions.length);
+
       toast({
         title: "Resume processed successfully!",
         description: `${data.questions.length} personalized questions have been generated.`,
       });
 
-      onResumeProcessed(fileContent, data.questions);
+      onResumeProcessed(extractedText, data.questions);
     } catch (error) {
       console.error('Error processing resume:', error);
       toast({

@@ -14,34 +14,52 @@ serve(async (req) => {
   }
 
   try {
+    // Get authorization header
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      console.error('No authorization header provided');
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { userId } = await req.json();
-
-    if (!userId) {
+    // Verify JWT and get user
+    const jwt = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    
+    if (userError || !user) {
+      console.error('Invalid user token:', userError);
       return new Response(
-        JSON.stringify({ error: 'User ID is required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
+
+    console.log('Creating payment order for user:', user.id);
 
     const keyId = Deno.env.get('RAZORPAY_KEY_ID');
     const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
 
     if (!keyId || !keySecret) {
+      console.error('Razorpay credentials not configured');
       throw new Error('Razorpay credentials not configured');
     }
+
+    console.log('Creating Razorpay order...');
 
     // Create Razorpay order
     const orderData = {
       amount: 100, // ₹1 in paise
       currency: 'INR',
-      receipt: `premium_${userId}_${Date.now()}`,
+      receipt: `premium_${user.id}_${Date.now()}`,
       notes: {
-        user_id: userId,
+        user_id: user.id,
         type: 'premium_upgrade'
       }
     };
@@ -64,12 +82,13 @@ serve(async (req) => {
     }
 
     const order = await razorpayResponse.json();
+    console.log('Razorpay order created:', order.id);
 
     // Store payment record in database
     const { error: dbError } = await supabase
       .from('payments')
       .insert({
-        user_id: userId,
+        user_id: user.id,
         order_id: order.id,
         amount: order.amount,
         currency: order.currency,
@@ -82,7 +101,7 @@ serve(async (req) => {
       throw new Error(`Database error: ${dbError.message}`);
     }
 
-    console.log('Payment order created:', order.id);
+    console.log('Payment record stored in database');
 
     return new Response(
       JSON.stringify({

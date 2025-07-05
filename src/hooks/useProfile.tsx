@@ -53,31 +53,48 @@ export const useProfile = () => {
   };
 
   const initializePayment = async () => {
-    if (!user || !profile) return;
+    if (!user || !profile) {
+      toast({
+        title: "Error",
+        description: "Please log in to upgrade to premium.",
+        variant: "destructive",
+      });
+      return null;
+    }
 
     try {
+      console.log('Initializing payment for user:', user.id);
+
       toast({
         title: "Initializing Payment",
         description: "Please wait while we set up your payment...",
       });
 
+      // Get current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Please log in to make a payment');
+      }
+
       // Create payment order
       const { data, error } = await supabase.functions.invoke('create-payment-order', {
         headers: {
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
       });
 
       if (error || !data) {
+        console.error('Payment initialization error:', error);
         throw new Error(error?.message || 'Failed to create payment order');
       }
 
+      console.log('Payment order created successfully:', data.orderId);
       return data;
     } catch (error) {
       console.error('Error initializing payment:', error);
       toast({
         title: "Error",
-        description: "Failed to initialize payment. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to initialize payment. Please try again.",
         variant: "destructive",
       });
       return null;
@@ -86,6 +103,8 @@ export const useProfile = () => {
 
   const verifyPayment = async (paymentData: any) => {
     try {
+      console.log('Payment successful, refreshing profile...');
+      
       // Payment verification is handled by webhook
       // Just refresh the profile to get updated status
       await fetchProfile();

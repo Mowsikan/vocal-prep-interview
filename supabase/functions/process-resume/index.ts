@@ -14,14 +14,39 @@ serve(async (req) => {
   }
 
   try {
+    // Get authorization header
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      console.error('No authorization header provided');
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Verify JWT and get user
+    const jwt = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    
+    if (userError || !user) {
+      console.error('Invalid user token:', userError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    console.log('Processing resume for user:', user.id);
+
     const { resumeText } = await req.json();
 
     if (!resumeText) {
+      console.error('No resume text provided');
       return new Response(
         JSON.stringify({ error: 'Resume text is required' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
@@ -31,8 +56,11 @@ serve(async (req) => {
     // Call Gemini API to generate personalized questions
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) {
+      console.error('Gemini API key not configured');
       throw new Error('Gemini API key not configured');
     }
+
+    console.log('Calling Gemini API for question generation...');
 
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`,
@@ -73,10 +101,14 @@ Only return the JSON array, nothing else.`
     );
 
     if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text();
+      console.error('Gemini API error:', errorText);
       throw new Error(`Gemini API error: ${geminiResponse.statusText}`);
     }
 
     const geminiData = await geminiResponse.json();
+    console.log('Gemini API response received');
+
     const generatedText = geminiData.candidates[0].content.parts[0].text;
 
     // Extract JSON from the response
@@ -102,6 +134,7 @@ Only return the JSON array, nothing else.`
 
     // Ensure we have exactly 5 questions
     if (!Array.isArray(questions) || questions.length !== 5) {
+      console.warn('Invalid questions format, using fallback');
       questions = [
         "Tell me about your most significant professional achievement.",
         "How do you handle challenging situations or conflicts at work?",
@@ -111,7 +144,7 @@ Only return the JSON array, nothing else.`
       ];
     }
 
-    console.log('Generated questions:', questions);
+    console.log('Generated questions successfully:', questions.length);
 
     return new Response(
       JSON.stringify({ 
