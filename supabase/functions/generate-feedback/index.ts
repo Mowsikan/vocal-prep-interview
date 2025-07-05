@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
@@ -8,7 +9,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,91 +16,109 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const { questions, answers, sessionId } = await req.json();
 
     if (!questions || !answers || !sessionId) {
       return new Response(
-        JSON.stringify({ error: 'Questions, answers, and sessionId are required' }),
+        JSON.stringify({ error: 'Questions, answers, and session ID are required' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'OpenAI API key not configured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+    // Call Gemini API to generate feedback
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!geminiApiKey) {
+      throw new Error('Gemini API key not configured');
     }
 
-    // Create detailed feedback prompt
-    const feedbackPrompt = `Analyze the following interview responses and provide detailed, constructive feedback:
+    // Create Q&A pairs for analysis
+    const qaContent = questions.map((q: string, i: number) => 
+      `Q${i + 1}: ${q}\nA${i + 1}: ${answers[i] || 'No answer provided'}`
+    ).join('\n\n');
 
-QUESTIONS AND ANSWERS:
-${questions.map((q: string, i: number) => `
-Q${i + 1}: ${q}
-A${i + 1}: ${answers[i] || 'No answer provided'}
-`).join('\n')}
+    const prompt = `Analyze this interview session and provide comprehensive feedback:
 
-Please provide:
-1. Overall assessment of the interview performance
-2. Specific feedback for each answer (strengths and areas for improvement)
-3. Communication skills assessment
-4. Technical competency evaluation (if applicable)
-5. Recommended next steps for improvement
-6. Overall score out of 10
+${qaContent}
 
-Format the response as a comprehensive feedback report that would be helpful for the candidate's professional development.`;
+Please provide detailed feedback covering:
 
-    console.log('Generating feedback for session:', sessionId);
+1. **Overall Performance Assessment**
+   - Rate the candidate's performance (1-10 scale)
+   - Highlight strengths and areas for improvement
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are an experienced interview coach and HR professional. Provide detailed, constructive feedback that helps candidates improve their interview skills and professional presentation.' 
-          },
-          { role: 'user', content: feedbackPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-      }),
-    });
+2. **Individual Answer Analysis**
+   - Evaluate each answer for relevance, depth, and clarity
+   - Suggest improvements for weak responses
 
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+3. **Communication Skills**
+   - Assess articulation, structure, and professionalism
+   - Note any communication strengths or weaknesses
+
+4. **Technical Competency** (if applicable)
+   - Evaluate technical knowledge demonstrated
+   - Identify gaps or strong technical points
+
+5. **Recommendations for Improvement**
+   - Specific actionable advice
+   - Suggested areas for further development
+   - Interview preparation tips
+
+6. **Key Takeaways**
+   - Main strengths to leverage
+   - Priority areas to work on before next interviews
+
+Format the response in a clear, professional manner that would be helpful for the candidate's development.`;
+
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.3,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
+          }
+        })
+      }
+    );
+
+    if (!geminiResponse.ok) {
+      throw new Error(`Gemini API error: ${geminiResponse.statusText}`);
     }
 
-    const data = await response.json();
-    const feedback = data.choices[0].message.content;
+    const geminiData = await geminiResponse.json();
+    const feedback = geminiData.candidates[0].content.parts[0].text;
 
-    // Update the interview session with feedback
+    // Update the session with the generated feedback
     const { error: updateError } = await supabase
       .from('interview_sessions')
-      .update({ 
-        feedback,
-        completed_at: new Date().toISOString()
-      })
+      .update({ feedback })
       .eq('id', sessionId);
 
     if (updateError) {
       throw new Error(`Database update error: ${updateError.message}`);
     }
 
-    console.log('Feedback generated and saved for session:', sessionId);
+    console.log('Feedback generated for session:', sessionId);
 
     return new Response(
-      JSON.stringify({ feedback }),
+      JSON.stringify({ 
+        feedback,
+        message: 'Feedback generated successfully'
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

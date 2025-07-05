@@ -1,6 +1,7 @@
+
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { createHmac } from "https://deno.land/std@0.168.0/node/crypto.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,124 +9,95 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    // Get user from JWT
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { userId } = await req.json();
 
-    if (authError || !user) {
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { 
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ error: 'User ID is required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
-    // Get Razorpay credentials
-    const razorpayKeyId = Deno.env.get('RAZORPAY_KEY_ID');
-    const razorpayKeySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
+    const keyId = Deno.env.get('RAZORPAY_KEY_ID');
+    const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
 
-    if (!razorpayKeyId || !razorpayKeySecret) {
-      return new Response(
-        JSON.stringify({ error: 'Razorpay credentials not configured' }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+    if (!keyId || !keySecret) {
+      throw new Error('Razorpay credentials not configured');
     }
 
     // Create Razorpay order
     const orderData = {
-      amount: 100, // ₹1 in paise (100 paise = ₹1)
+      amount: 100, // ₹1 in paise
       currency: 'INR',
-      receipt: `premium_${user.id}_${Date.now()}`,
+      receipt: `premium_${userId}_${Date.now()}`,
       notes: {
-        user_id: user.id,
-        upgrade_type: 'premium'
+        user_id: userId,
+        type: 'premium_upgrade'
       }
     };
 
-    const response = await fetch('https://api.razorpay.com/v1/orders', {
+    const auth = btoa(`${keyId}:${keySecret}`);
+    
+    const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${btoa(`${razorpayKeyId}:${razorpayKeySecret}`)}`,
+        'Authorization': `Basic ${auth}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(orderData),
+      body: JSON.stringify(orderData)
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Razorpay API error:', error);
-      return new Response(
-        JSON.stringify({ error: 'Failed to create payment order' }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+    if (!razorpayResponse.ok) {
+      const errorText = await razorpayResponse.text();
+      console.error('Razorpay API error:', errorText);
+      throw new Error(`Razorpay API error: ${razorpayResponse.statusText}`);
     }
 
-    const order = await response.json();
+    const order = await razorpayResponse.json();
 
     // Store payment record in database
     const { error: dbError } = await supabase
       .from('payments')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         order_id: order.id,
         amount: order.amount,
         currency: order.currency,
         status: 'created',
-        metadata: order
+        metadata: { receipt: order.receipt }
       });
 
     if (dbError) {
       console.error('Database error:', dbError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to store payment record' }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      throw new Error(`Database error: ${dbError.message}`);
     }
+
+    console.log('Payment order created:', order.id);
 
     return new Response(
       JSON.stringify({
         orderId: order.id,
         amount: order.amount,
         currency: order.currency,
-        keyId: razorpayKeyId
+        keyId: keyId
       }),
-      { 
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
   } catch (error) {
-    console.error('Create payment order error:', error);
+    console.error('Error in create-payment-order function:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ error: 'Failed to create payment order', details: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });

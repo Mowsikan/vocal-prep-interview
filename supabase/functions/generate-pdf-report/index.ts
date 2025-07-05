@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
@@ -8,8 +9,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'Options') {
+  if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -160,7 +160,7 @@ serve(async (req) => {
     await browser.close();
 
     // Upload PDF to Supabase Storage
-    const fileName = `interview-report-${sessionId}-${Date.now()}.pdf`;
+    const fileName = `${session.user_id}/interview-report-${sessionId}-${Date.now()}.pdf`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('reports')
       .upload(fileName, pdfBuffer, {

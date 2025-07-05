@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
@@ -8,7 +9,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,7 +16,7 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const { resumeText } = await req.json();
@@ -28,79 +28,96 @@ serve(async (req) => {
       );
     }
 
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'OpenAI API key not configured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+    // Call Gemini API to generate personalized questions
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!geminiApiKey) {
+      throw new Error('Gemini API key not configured');
     }
 
-    // Generate personalized questions based on resume
-    const questionsPrompt = `Based on the following resume, generate 7 personalized interview questions that are relevant to the candidate's experience, skills, and background. Make the questions specific and tailored to their expertise:
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Based on this resume, generate exactly 5 personalized interview questions that are specific to the candidate's experience and skills. Focus on their background, achievements, and technical skills mentioned in the resume.
 
-Resume:
+Resume content:
 ${resumeText}
 
-Please return the questions as a JSON array of strings. Each question should be professional and relevant to their background.`;
+Please provide exactly 5 questions in a JSON array format like this:
+["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]
 
-    console.log('Generating questions for resume...');
+Make the questions challenging but fair, focusing on:
+1. Technical skills and experience
+2. Past achievements and projects
+3. Problem-solving scenarios
+4. Leadership or teamwork experience
+5. Career goals and motivation
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are an expert HR interviewer. Generate relevant, professional interview questions based on the candidate\'s resume. Return only a valid JSON array of 7 question strings.' 
-          },
-          { role: 'user', content: questionsPrompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 1000,
-      }),
-    });
+Only return the JSON array, nothing else.`
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
+          }
+        })
+      }
+    );
 
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+    if (!geminiResponse.ok) {
+      throw new Error(`Gemini API error: ${geminiResponse.statusText}`);
     }
 
-    const data = await response.json();
+    const geminiData = await geminiResponse.json();
+    const generatedText = geminiData.candidates[0].content.parts[0].text;
+
+    // Extract JSON from the response
     let questions;
-    
     try {
-      // Parse the AI response to extract questions
-      const questionsText = data.choices[0].message.content.trim();
-      // Remove any markdown formatting if present
-      const cleanText = questionsText.replace(/```json\n?|\n?```/g, '');
-      questions = JSON.parse(cleanText);
-      
-      if (!Array.isArray(questions) || questions.length === 0) {
-        throw new Error('Invalid questions format');
+      const jsonMatch = generatedText.match(/\[.*\]/s);
+      if (jsonMatch) {
+        questions = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('No valid JSON found in Gemini response');
       }
     } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      // Fallback questions if AI response parsing fails
+      console.error('Failed to parse Gemini response:', generatedText);
+      // Fallback questions if parsing fails
       questions = [
-        "Tell me about yourself and your professional background.",
-        "What motivated you to apply for this position?",
-        "Describe a challenging project you've worked on and how you overcame obstacles.",
-        "What are your greatest strengths and how do they relate to this role?",
-        "Where do you see yourself professionally in the next 5 years?",
-        "How do you handle working under pressure and tight deadlines?",
-        "What experience do you have with the technologies mentioned in your resume?"
+        "Tell me about your most challenging project and how you overcame obstacles.",
+        "How do you stay updated with the latest technologies in your field?",
+        "Describe a time when you had to work with a difficult team member.",
+        "What motivates you in your career, and where do you see yourself in 5 years?",
+        "Can you walk me through your problem-solving approach for complex technical issues?"
+      ];
+    }
+
+    // Ensure we have exactly 5 questions
+    if (!Array.isArray(questions) || questions.length !== 5) {
+      questions = [
+        "Tell me about your most significant professional achievement.",
+        "How do you handle challenging situations or conflicts at work?",
+        "What technical skills from your resume are you most proud of?",
+        "Describe a project where you had to learn something new quickly.",
+        "What are your career goals and how does this role fit into them?"
       ];
     }
 
     console.log('Generated questions:', questions);
 
     return new Response(
-      JSON.stringify({ questions }),
+      JSON.stringify({ 
+        questions,
+        message: 'Resume processed and questions generated successfully'
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
