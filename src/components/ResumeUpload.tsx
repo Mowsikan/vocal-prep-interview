@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,60 +19,92 @@ const ResumeUpload = ({ onResumeProcessed }: ResumeUploadProps) => {
       const reader = new FileReader();
       reader.onload = async () => {
         try {
-          // For now, we'll use a simulated text extraction
-          // In a real implementation, you'd use a PDF parsing library
+          // Mock extracted text for demo purposes
+          // In production, you would use a proper PDF parsing library
           const mockExtractedText = `
 Professional Software Developer
-5+ years of experience in full-stack web development
+Email: john.doe@email.com | Phone: (555) 123-4567
+LinkedIn: linkedin.com/in/johndoe | GitHub: github.com/johndoe
 
-TECHNICAL SKILLS:
-- Frontend: React, TypeScript, JavaScript, HTML5, CSS3, Tailwind CSS
-- Backend: Node.js, Express.js, Python, Django
-- Databases: PostgreSQL, MongoDB, Redis
-- Cloud: AWS, Google Cloud Platform, Docker, Kubernetes
-- Tools: Git, GitHub, VS Code, Figma
+PROFESSIONAL SUMMARY
+Experienced Full-Stack Developer with 5+ years of expertise in modern web technologies. 
+Proven track record of building scalable applications and leading development teams.
 
-EXPERIENCE:
-Senior Software Engineer | TechCorp Inc. | 2021 - Present
-- Led development of scalable web applications serving 100K+ users
-- Implemented microservices architecture reducing system downtime by 40%
-- Mentored junior developers and conducted code reviews
-- Technologies: React, Node.js, PostgreSQL, AWS
+TECHNICAL SKILLS
+• Frontend: React, TypeScript, JavaScript, HTML5, CSS3, Tailwind CSS, Next.js
+• Backend: Node.js, Express.js, Python, Django, FastAPI
+• Databases: PostgreSQL, MongoDB, Redis, MySQL
+• Cloud & DevOps: AWS, Google Cloud Platform, Docker, Kubernetes, CI/CD
+• Tools: Git, GitHub, VS Code, Figma, Jira, Slack
 
-Software Developer | StartupXYZ | 2019 - 2021
-- Built responsive web applications from scratch
-- Collaborated with cross-functional teams in agile environment
-- Optimized database queries improving application performance by 60%
-- Technologies: JavaScript, Python, MongoDB, Docker
+PROFESSIONAL EXPERIENCE
 
-EDUCATION:
-Bachelor of Science in Computer Science | University ABC | 2015 - 2019
-- Relevant coursework: Data Structures, Algorithms, Database Systems
-- Capstone project: E-commerce platform with real-time analytics
+Senior Software Engineer | TechCorp Inc. | Jan 2021 - Present
+• Led development of scalable web applications serving 100K+ active users
+• Implemented microservices architecture reducing system downtime by 40%
+• Mentored 5 junior developers and established code review processes
+• Built real-time analytics dashboard using React and WebSocket connections
+• Optimized database queries improving application performance by 60%
+• Technologies: React, Node.js, PostgreSQL, AWS, Docker
 
-PROJECTS:
-Task Management App
-- Full-stack application with React frontend and Node.js backend
-- Implemented user authentication, real-time updates, and data visualization
-- Deployed on AWS with CI/CD pipeline
+Software Developer | StartupXYZ | Jun 2019 - Dec 2020
+• Developed responsive web applications from concept to deployment
+• Collaborated with cross-functional teams in agile development environment
+• Integrated third-party APIs including payment gateways and social media platforms
+• Implemented automated testing reducing bug reports by 50%
+• Technologies: JavaScript, Python, MongoDB, Google Cloud Platform
+
+Junior Developer | WebSolutions LLC | Aug 2018 - May 2019
+• Built interactive user interfaces using React and modern CSS frameworks
+• Participated in daily standups and sprint planning meetings
+• Fixed bugs and implemented feature requests based on user feedback
+• Learned version control best practices and collaborative development workflows
+
+EDUCATION
+Bachelor of Science in Computer Science | State University | 2014 - 2018
+• Relevant Coursework: Data Structures, Algorithms, Database Systems, Software Engineering
+• Capstone Project: E-commerce platform with real-time inventory management
+• GPA: 3.7/4.0
+
+PROJECTS
+
+Task Management Application
+• Full-stack web application built with React frontend and Node.js backend
+• Implemented user authentication, real-time updates, and data visualization
+• Deployed on AWS with automated CI/CD pipeline using GitHub Actions
+• Features drag-and-drop interface and collaborative workspace functionality
 
 Personal Portfolio Website
-- Responsive design showcasing projects and skills
-- Built with React and deployed on Vercel
-- Integrated with headless CMS for content management
+• Responsive design showcasing projects and technical skills
+• Built with React and TypeScript, deployed on Vercel
+• Integrated with headless CMS for dynamic content management
+• Optimized for performance with lazy loading and code splitting
 
-CERTIFICATIONS:
-- AWS Certified Solutions Architect Associate
-- Google Cloud Professional Cloud Architect
-- Certified Scrum Master (CSM)
+Open Source Contributions
+• Contributed to 10+ open source projects on GitHub
+• Maintained personal library with 200+ stars for React utility functions
+• Active participant in developer communities and tech meetups
+
+CERTIFICATIONS & ACHIEVEMENTS
+• AWS Certified Solutions Architect Associate (2022)
+• Google Cloud Professional Cloud Architect (2021)
+• Certified Scrum Master (CSM) (2020)  
+• Winner of Regional Hackathon 2019 - Best Technical Implementation
+• Speaker at DevCon 2021 - "Modern React Patterns and Performance"
+
+LANGUAGES
+• English (Native)
+• Spanish (Conversational)
+• French (Basic)
           `.trim();
           
           resolve(mockExtractedText);
         } catch (error) {
-          reject(error);
+          console.error('Error extracting text from PDF:', error);
+          reject(new Error('Failed to extract text from PDF'));
         }
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('Failed to read PDF file'));
       reader.readAsArrayBuffer(file);
     });
   };
@@ -104,11 +135,16 @@ CERTIFICATIONS:
       
       // Extract text from PDF
       const extractedText = await extractTextFromPDF(file);
-      console.log('PDF text extracted successfully');
+      
+      if (!extractedText.trim()) {
+        throw new Error('No text could be extracted from the PDF');
+      }
+      
+      console.log('PDF text extracted successfully, length:', extractedText.length);
       
       // Get current session for authentication
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
         throw new Error('Please log in to upload your resume');
       }
 
@@ -119,6 +155,7 @@ CERTIFICATIONS:
         body: { resumeText: extractedText },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
         },
       });
 
@@ -127,9 +164,9 @@ CERTIFICATIONS:
         throw new Error(error.message || 'Failed to process resume');
       }
 
-      if (!data || !data.questions) {
+      if (!data || !data.questions || !Array.isArray(data.questions)) {
         console.error('Invalid response from process-resume:', data);
-        throw new Error('Failed to generate questions');
+        throw new Error('Failed to generate questions - invalid response format');
       }
       
       console.log('Questions generated successfully:', data.questions.length);
@@ -142,9 +179,11 @@ CERTIFICATIONS:
       onResumeProcessed(extractedText, data.questions);
     } catch (error) {
       console.error('Error processing resume:', error);
+      const errorMessage = error instanceof Error ? error.message : "Please try again with a different file.";
+      
       toast({
         title: "Error processing resume",
-        description: error instanceof Error ? error.message : "Please try again with a different file.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

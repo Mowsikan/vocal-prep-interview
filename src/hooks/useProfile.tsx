@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -71,30 +70,40 @@ export const useProfile = () => {
       });
 
       // Get current session for authentication
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
         throw new Error('Please log in to make a payment');
       }
+
+      console.log('Session obtained, calling create-payment-order...');
 
       // Create payment order
       const { data, error } = await supabase.functions.invoke('create-payment-order', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
         },
       });
 
-      if (error || !data) {
+      if (error) {
         console.error('Payment initialization error:', error);
-        throw new Error(error?.message || 'Failed to create payment order');
+        throw new Error(error.message || 'Failed to create payment order');
+      }
+
+      if (!data || !data.orderId) {
+        console.error('Invalid payment response:', data);
+        throw new Error('Invalid payment response - missing order ID');
       }
 
       console.log('Payment order created successfully:', data.orderId);
       return data;
     } catch (error) {
       console.error('Error initializing payment:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to initialize payment. Please try again.";
+      
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to initialize payment. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
       return null;

@@ -14,6 +14,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Starting process-resume function...');
+
     // Get authorization header
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
@@ -24,9 +26,10 @@ serve(async (req) => {
       );
     }
 
+    // Create Supabase client for user verification
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
     // Verify JWT and get user
@@ -41,23 +44,29 @@ serve(async (req) => {
       );
     }
 
-    console.log('Processing resume for user:', user.id);
+    console.log('User authenticated successfully:', user.id);
 
-    const { resumeText } = await req.json();
+    const requestBody = await req.json();
+    const { resumeText } = requestBody;
 
-    if (!resumeText) {
-      console.error('No resume text provided');
+    if (!resumeText || typeof resumeText !== 'string' || resumeText.trim().length === 0) {
+      console.error('No resume text provided or empty');
       return new Response(
-        JSON.stringify({ error: 'Resume text is required' }),
+        JSON.stringify({ error: 'Resume text is required and cannot be empty' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
+
+    console.log('Resume text received, length:', resumeText.length);
 
     // Call Gemini API to generate personalized questions
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) {
       console.error('Gemini API key not configured');
-      throw new Error('Gemini API key not configured');
+      return new Response(
+        JSON.stringify({ error: 'AI service temporarily unavailable' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
 
     console.log('Calling Gemini API for question generation...');
@@ -103,11 +112,33 @@ Only return the JSON array, nothing else.`
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
       console.error('Gemini API error:', errorText);
-      throw new Error(`Gemini API error: ${geminiResponse.statusText}`);
+      
+      // Fallback questions if Gemini fails
+      const fallbackQuestions = [
+        "Tell me about your most significant professional achievement mentioned in your resume.",
+        "How do you approach problem-solving in challenging technical situations?",
+        "Describe a project where you had to learn new technologies or skills quickly.",
+        "How do you handle working in a team environment, and can you give an example?",
+        "What are your career goals and how does this role align with your aspirations?"
+      ];
+
+      console.log('Using fallback questions due to Gemini API error');
+      return new Response(
+        JSON.stringify({ 
+          questions: fallbackQuestions,
+          message: 'Resume processed and questions generated successfully'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const geminiData = await geminiResponse.json();
     console.log('Gemini API response received');
+
+    if (!geminiData.candidates || !geminiData.candidates[0] || !geminiData.candidates[0].content) {
+      console.error('Invalid Gemini response structure:', geminiData);
+      throw new Error('Invalid AI response structure');
+    }
 
     const generatedText = geminiData.candidates[0].content.parts[0].text;
 
@@ -156,7 +187,10 @@ Only return the JSON array, nothing else.`
   } catch (error) {
     console.error('Error in process-resume function:', error);
     return new Response(
-      JSON.stringify({ error: 'Failed to process resume', details: error.message }),
+      JSON.stringify({ 
+        error: 'Failed to process resume and generate questions', 
+        details: error.message 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }

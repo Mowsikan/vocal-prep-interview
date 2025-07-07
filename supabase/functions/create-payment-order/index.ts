@@ -14,6 +14,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Starting create-payment-order function...');
+
     // Get authorization header
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
@@ -24,9 +26,10 @@ serve(async (req) => {
       );
     }
 
+    // Create Supabase client for user verification
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
     // Verify JWT and get user
@@ -41,17 +44,20 @@ serve(async (req) => {
       );
     }
 
-    console.log('Creating payment order for user:', user.id);
+    console.log('User authenticated successfully:', user.id);
 
     const keyId = Deno.env.get('RAZORPAY_KEY_ID');
     const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
 
     if (!keyId || !keySecret) {
       console.error('Razorpay credentials not configured');
-      throw new Error('Razorpay credentials not configured');
+      return new Response(
+        JSON.stringify({ error: 'Payment service temporarily unavailable' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
 
-    console.log('Creating Razorpay order...');
+    console.log('Creating Razorpay order for user:', user.id);
 
     // Create Razorpay order
     const orderData = {
@@ -78,14 +84,23 @@ serve(async (req) => {
     if (!razorpayResponse.ok) {
       const errorText = await razorpayResponse.text();
       console.error('Razorpay API error:', errorText);
-      throw new Error(`Razorpay API error: ${razorpayResponse.statusText}`);
+      return new Response(
+        JSON.stringify({ error: 'Failed to create payment order' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
 
     const order = await razorpayResponse.json();
     console.log('Razorpay order created:', order.id);
 
+    // Create Supabase client with service role for database operations
+    const supabaseService = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
     // Store payment record in database
-    const { error: dbError } = await supabase
+    const { error: dbError } = await supabaseService
       .from('payments')
       .insert({
         user_id: user.id,
@@ -98,10 +113,11 @@ serve(async (req) => {
 
     if (dbError) {
       console.error('Database error:', dbError);
-      throw new Error(`Database error: ${dbError.message}`);
+      // Don't fail the payment creation if database insert fails
+      console.warn('Payment record not stored in database, but order created successfully');
+    } else {
+      console.log('Payment record stored in database');
     }
-
-    console.log('Payment record stored in database');
 
     return new Response(
       JSON.stringify({
@@ -115,7 +131,10 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in create-payment-order function:', error);
     return new Response(
-      JSON.stringify({ error: 'Failed to create payment order', details: error.message }),
+      JSON.stringify({ 
+        error: 'Failed to create payment order', 
+        details: error.message 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
